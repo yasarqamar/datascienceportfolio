@@ -1,0 +1,632 @@
+---
+title: "Kreditech Data Science Assessment"
+output:
+  pdf_document: default
+  html_notebook:
+    fig_width: 8
+  html_document: default
+---
+
+**Applicant:** Yasar Qamar  
+
+**Assessment Date:** 22-August-2017  
+
+
+This report details the approach taken to implement the solution along with the reasons for choosing different methods that have been applied. It also contains the code as well as the results obtained.
+
+### Importing Raw Data
+
+```{r}
+# Load Data  
+
+RawTrainData <- read.csv("E:/MathMods/Data Science/R Learning/Solutions/Kreditech/Training.csv", header = TRUE, sep = ";")
+RawTestData <-  read.csv("E:/MathMods/Data Science/R Learning/Solutions/Kreditech/Validation.csv", header = TRUE, sep = ";")
+  
+# Combining Training and Validation Datasets
+
+MasterRawData <- rbind(RawTrainData, RawTestData)
+
+```
+
+The *Training* and *Validation* datasets have been combined so that both the datasets can be treated for data cleaning purposes at the same time.  
+
+### Check Training data  
+Using the `head()` function, the first 6 rows of the dataset are displayed.
+```{r}
+head(MasterRawData)
+```
+
+### Structure of Training Data  
+The class types of the variables in the dataset is checked next using the `str()` function.
+```{r}
+# Structure of Training Data
+str(RawTrainData)
+```
+The Training Data set contains *3700* Observations (Rows) and *22* Variables (Columns). The last Variable denoted as *classlabel* is assumed to be the *Response* or *Dependent* variable. This means that the value of the response variable depends on a combination of some or all of the remaining 21 variables.  
+
+The training data structure shows that it contains a lot of factor variables. Also, many of the columns seem to contain alot of missing values as denoted by *NA*. These missing values need to be treated before any meaningful analysis can be started.
+
+### Data Cleaning
+The method of k Nearest Neighbours (kNN) has been used to treat the missing values. The function `knnImputation()` uses the mode of the k nearest for categorical variables, whereas for continuous variables it uses the median value instead. 
+
+The value of k used is the default value which is `k = 10`.
+```{r}
+# kNN Imputation to impute missing values
+library(DMwR)
+require(lattice)
+require(grid)
+
+TrainData <- knnImputation(RawTrainData[, !names(RawTrainData) %in% "classlabel"])  
+anyNA(TrainData)
+
+TestData <- knnImputation(RawTestData[, !names(RawTestData) %in% "classlabel"])  
+anyNA(TestData)
+```
+After *kNN Imputation* the datasets do not contain any missing values. The reason to choose the *kNN imputation* method to treat the missing values is that it does not reduce the dataset by eliminating the rows containing missing values as is the case with the function `na.omit()`. Also, the function treats the whole dataframe in a convenient manner.  
+
+Next step is to convert the factors in the dataset into numeric values according to the factor levels. This is done primarily so that Prinicipal Component Analysis can be performed later on.
+
+```{r}
+# Factors conversion to Numeric type according to their levels
+
+TrainDataNum <- data.frame(lapply(TrainData, function(x) as.numeric(x)))
+TestDataNum <- data.frame(lapply(TestData, function(x) as.numeric(x)))
+
+MasterData <- rbind(TrainDataNum, TestDataNum)
+```
+
+### Data Exploration
+For this part, in the constraint amount of time I had, I have selected a few of the attributes for demonstration. Similar, exploration can be done for all the variables of the dataset. The exploratory methods considered are:  
+
+* Marginal Tables  
+* Summary Statistics  
+* Histograms  
+* Box Plots  
+
+
+#### Marginal Tables
+The proportion of attributes according to their factor levels is displayed for a few attributes for demonstration. The proportion values are calculated according to the formula: 
+
+$$Proportion = \frac{Total Number of Occurrences}{3700} $$
+
+```{r}
+# Checking Levels and Proportions for v76
+margin.table(prop.table(table(TrainData$v76)),1)
+```
+Levels(v76)        | g   | p   | s
+--------------|-----|-----|-----
+**Proportions(%)**| 92.7| 2.2 | 5.1
+
+```{r}
+# Checking Levels and Proportions for v68
+margin.table(prop.table(table(TrainData$v68)),1)
+```
+Levels(v68)        | f  | t  
+--------------|-----|----
+**Proportions(%)**| 7.5| 92.5
+
+
+```{r}
+# Checking Levels and Proportions for v32
+margin.table(prop.table(table(TrainData$v32)),1)
+```
+Levels(v32)        | l   | u   | y
+--------------|-----|-----|-----
+**Proportions(%)**| 2.6| 82.6 | 14.8
+
+If some of the levels of a variable come out to be less than a threshold value (e.g. 5%), then they can be merged. However, since there is no qualitative information present regarding the columns of the dataset, this approach has not been taken.  
+
+
+#### Summary Statistics
+The summary statistics values for 3 of the continuous variables (v55, v42, v53) in the dataset are presented next.
+
+```{r}
+# Variable v55
+summary(TrainData$v55)
+```
+(v55)        | Min   | 1st Quartile | Mean   | Median | 3rd Quartile | Max
+-------------|-------|--------------|--------|--------|--------------|----
+**Values**| 0| 0 | 120.0 |  162.1 | 274.0 | 1160.0 
+
+```{r}
+# Variable v42
+summary(TrainData$v42)
+```
+(v42)        | Min   | 1st Quartile | Mean   | Median | 3rd Quartile | Max
+-------------|-------|--------------|--------|--------|--------------|----
+**Values**| 0| 0 | 1200000 |  1620878 | 2740000 | 11600000 
+
+```{r}
+# Variable v53
+summary(TrainData$v53)
+```
+(v53)        | Min   | 1st Quartile | Mean   | Median | 3rd Quartile | Max
+-------------|-------|--------------|--------|--------|--------------|----
+**Values**| 0| 0 | 113 |  2247 | 1060 | 100000
+
+Immediately, an interesting observation can be made. The summary statistics for **v55** and **v42** show a clear relationship. Infact, they can be said to contain the same values multiplied by a factor. The relationship between them is:
+$$ v42 = v55 \times 10000  $$
+Such an explicit relationship between variables gives rise to collinearity in the dataset. This is extremely bad as it greatly reduces the accuracy of the machine learning models. Normally, the approach to avoid this is to eliminate the correlated variables. Since, Principal Component Analysis has been done later it will automatically take care of all the correlated variables.
+
+#### Histograms
+Next, the distributions of these 3 variables is displayed using the histograms.
+
+```{r}
+par(mfrow = c(1,3))
+
+# To produce histograms of these 3 variables
+hist(TrainData$v55, 
+     breaks=seq(0,1200,100), 
+     xlab = "v55", 
+     ylab = "Frequency",
+     col = "gray",
+     main = " ", cex=0.4) 
+
+
+hist(TrainData$v42, 
+     breaks = seq(0, 11600000, 1160000), 
+     xlab = "v42", 
+     ylab = "Frequency",
+     col = "gray",
+     main = " ", cex=0.4) 
+
+hist(TrainData$v53, 
+     breaks=seq(0,100000, 10000), 
+     xlab = "v53", 
+     ylab = "Frequency",
+     col = "gray",
+     main = " ", cex=0.4) 
+```
+
+The histograms for **v55** and **v42** confirm the relationship between them as defined before as their histograms are identical. The histogram for **v53** indicates the presence of outliers. All 3 histograms show skewed ditributions. These should be corrected in order to improve model accuracies. However, due to time constraint this has not been done.
+
+#### Box-Plots
+Box-Plots are an effective way of visualising the outliers present in the data. The box-plots for the 3 variables are shown below:
+
+```{r}
+# To display Box-Plots
+par(mfrow = c(1,3))
+
+boxplot(TrainData$v55, bty="n",xlab = "v55", cex=0.4) 
+boxplot(TrainData$v42, bty="n",xlab = "v42", cex=0.4) 
+boxplot(TrainData$v53, bty="n",xlab = "v53", cex=0.4) 
+```
+
+For **v53** almost all of its values lie within a small range as shown by the concentrated box-plot.
+
+
+### Principal Component Analysis
+The dataset contains 21 *predictors* or *variables*. Arguably these are too many to be used as input to a machine learning model. Hence, Principal Component Analysis has been carried out and only the most important features are retained as determined by the Kaiser-Guttman cut-off criterion.
+
+```{r}
+PCData <- prcomp(MasterData, scale=T)
+
+# Scree Plot
+par(mfrow = c(1,1))
+plot(PCData, type="line", col=c("dark blue"), main="", pch=19) ## Scree plot
+mtext("Screeplot of MasterData", side=1, line=3, cex=0.8)
+
+```
+
+Here the Scree Plot displays the drop in eigenvalues moving to the right. Next the cut-off line is plotted
+
+```{r}
+# Calculate and print the eigenvalues for the principal components.
+# The eigenvalues are calculated by squaring the standard deviation values for each component.
+eigenvalues <- (PCData$sdev)**2
+eigenvalues
+
+# Plot the Scree plot with KG-Cutoff.
+{
+screePlot <- plot(PCData, type="l", col=c("dark blue"), main="Eigenvalues with Kaiser-Guttman cutoff")
+
+# Add a cutoff line based on the mean of the eigenvalues.
+# This should be equal to one for centered and scaled data.
+abline(h=mean(eigenvalues),lty=2,col="red")
+}
+```
+
+The Kaiser cut-off criterion states that all principal components with an eigenvalue lesser than 1.0 should be dropped. According to this criterion, only the first 8 features are of the most importance in order to predict the classifier variable. Hence, the first 8 attributes will be retained for model building purposes.
+
+Note that the Principal Components now contain scaled values. Hence, the original classifier variable *classlabel* values are binded to the dataset obtained after selecting the 8 features.
+
+```{r}
+# From Scree Plot only the first 8 attributes are important
+
+MasterDataPCA <- PCData$x[,1:8]
+
+# Bind Response Variable to Train and Test Data After PCA
+
+classlabel <- MasterRawData$classlabel
+
+MasterDataPCA <- cbind(MasterDataPCA, classlabel)
+
+TrainDataPCA <- MasterDataPCA[1:3700,]
+TestDataPCA <- MasterDataPCA[3701:3900,]
+
+
+
+# Convert all the Datasets into Dataframes
+
+TrainDataDF <- as.data.frame(TrainDataPCA)
+TestDataDF <- as.data.frame(TestDataPCA)
+
+
+# Converting Dependent Variable from Numeric to a Factor
+
+TrainDataDF$classlabel <- as.factor(TrainDataDF$classlabel)
+TestDataDF$classlabel <- as.factor(TestDataDF$classlabel)
+
+# Calculating Proportion of different Levels in the Dependent Variable
+# of each set of Train/Test dataset
+
+prop.table(table(TrainDataDF$classlabel))   # 1 = No, 2 = Yes
+
+```
+The proportion of *(1)* and *(0)* values in the Response variable of Training Data are as follows:
+
+Levels(classlabel)        | No (0)  | Yes(1)  
+--------------|-----|----
+**Proportions(%)**| 7.5| 92.5
+
+
+### Building Machine Learning Classifier Models  
+
+In this section a number of different machine learning models are built using the Training Dataset. The fitted models are then used to predict on the Validation dataset provided. The following models have been built:
+
+* **Logistic Regression**
+
+* **Decision Trees**   
+
+* **Random Forest**  
+
+* **Discriminant Analysis** (*Linear* & *Quadratic*)
+
+
+Model accuracy is then calculated from the Confusion Matrix. Accuracy is calculated by summing the True positives and True negatives and dividing them by the total number of observations. The formula can be stated as:
+
+$$  Accuracy = \frac{True Positives + True Negatives}{Total Observations(n)} $$
+
+#### Logistic Regression
+
+For Logistic Regression, model evaluation has been done both by computing the accuracy from the Confusion matrix and also by plotting its ROC plot.
+
+```{r warning = FALSE, results='hide'}
+# Build the model
+LogisticModel <- glm(TrainDataDF$classlabel ~ ., family=binomial, data = TrainDataDF)
+
+fit <- fitted.values(LogisticModel)
+
+Threshold <- rep(0,3700)
+
+for (i in 1:3700)
+  if(fit[i] >= 0.50) Threshold[i] <- 1
+
+library(gmodels)
+
+# Predicting the Model using the Test Dataset
+library(ROCR)
+
+
+pred <- prediction(Threshold[1:200], TestDataDF$classlabel)
+
+```
+
+The model is evaluated by using the ROC plot as follows:
+
+
+```{r warning=FALSE}
+
+# Plotting the ROC Curve
+library(pROC)
+
+result.roc <- roc(TestDataDF$classlabel, order(Threshold[1:200])) # Draw ROC curve.
+plot(result.roc)
+```
+
+Due to the small number of validation data observations, the ROC plot is not very meaningful.  
+
+Therefore, the accuracy of the model on the Validation data is calculated using the Confusion Matrix as follows:
+
+```{r}
+# Confusion Matrix Table
+table(Threshold[1:200], TestDataDF$classlabel)
+```
+
+The Confusion Matrix is as follows:
+
+n = 200        | Predicted (0)  | Predicted (1)  
+--------------|-----|----
+**Actual (0)**| 85| 24
+**Actual (1)**| 22 | 69
+
+
+
+```{r}
+# Calculate the accuracy
+Accuracy = (table(Threshold[1:200], TestDataDF$classlabel)[1,1] +
+              table(Threshold[1:200], TestDataDF$classlabel)[2,2])/200
+
+cat("Using Logistic Regression Model the Accuracy on the Validation Set is: ", Accuracy*100,"%")
+```
+
+Hence, we get an accuracy of **77%** on the Validation dataset using Logistic Regression.
+
+
+
+
+### Decision Trees
+
+
+```{r warning=FALSE} 
+# Decision-Tree Model 
+library(tree)
+Train50_tree <- tree(as.factor(TrainDataDF$classlabel) ~ ., data=TrainDataDF, method="class")
+
+summary(Train50_tree)
+```
+The summary statistics of the Decision Tree are displayed for the Training data.  
+
+Here is a plot of the actual decision tree created for Training Data.
+
+```{r}
+# plot the tree
+plot(Train50_tree)
+text(Train50_tree, pretty=0,cex=0.6)
+```
+It can be observed that the tree model used the **PC7** feature as the root node. All the leaf nodes are ending in one of the two classifier values. Value of 1 denotes 0 (No) and value 2 denotes 1 (Yes).
+
+```{r}
+# predict using the test values
+Test50_pred <- predict(Train50_tree, TestDataDF, type="class")
+table(Test50_pred, TestDataDF$classlabel)
+```
+The Confusion Matrix is as follows:
+
+n = 200        | Predicted (0)  | Predicted (1)  
+--------------|-----|----
+**Actual (0)**| 71| 52
+**Actual (1)**| 36 | 41
+
+```{r}
+# Calculate the accuracy
+Accuracy = (table(Test50_pred, TestDataDF$classlabel)[1,1] +
+              table(Test50_pred, TestDataDF$classlabel)[2,2])/dim(TestDataDF)[1]
+
+cat("Using Decision tree model the Accuracy is: ", Accuracy*100,"%")  
+
+```
+
+The accuracy obtained by using the decision tree is **56%**. This is a very low value.  
+
+The decision tree is pruned in order to improve the accuracy as follows:
+
+```{r}
+# Prune the Tree to see if performance improves
+
+Train50_prune8 <- prune.misclass(Train50_tree, best=8)
+
+plot(Train50_prune8)
+text(Train50_prune8, pretty=0,cex=0.6)
+```
+
+It can be observed that the pruned tree contains lesser branches and leafs as expected.  
+
+This pruned tree is then again used to predict the test values.
+
+```{r}
+# Prune the tree
+Test50_prune8_pred <- predict(Train50_prune8, TestDataDF, type="class")
+table(Test50_prune8_pred, TestDataDF$classlabel)
+```
+The Confusion Matrix is as follows:
+
+n = 200        | Predicted (0)  | Predicted (1)  
+--------------|-----|----
+**Actual (0)**| 68| 36
+**Actual (1)**| 39 | 57
+
+
+```{r}
+# Calculate the accuracy
+Accuracy = (table(Test50_prune8_pred, TestDataDF$classlabel)[1,1] +
+              table(Test50_prune8_pred, TestDataDF$classlabel)[2,2])/dim(TestDataDF)[1]
+
+cat(" After Pruning the tree we get the Accuracy as: ", Accuracy*100,"%")  
+```
+
+The accuracy of the pruned tree model is **62%**. This improve in accuracy was expected however it is still a very low value of accuracy.
+
+### Random Forest
+
+In order to improve the accuracy obtained from the Decision Tree models lets take a look how the Random Forest model performs on this dataset.
+
+```{r}
+# Building a Random Forest Model
+library(randomForest)
+
+rf50 <- randomForest(TrainDataDF$classlabel ~., data = TrainDataDF, ntree=200, importance=T, proximity=T)
+
+plot(rf50, main="")
+```
+
+The error rate plot above shows the decrease in error rate as the number of trees increases.
+
+```{r}
+# Using the model for prediction
+Test50_rf_pred <- predict(rf50, TestDataDF, type="class")
+
+Threshold_rf <- rep(0,200)
+
+for (i in 1:200)
+  if(as.numeric(Test50_rf_pred[i]) ==2) Threshold_rf[i] <- 1
+
+table(Threshold_rf, TestDataDF$classlabel)
+```
+The Confusion Matrix is as follows:
+
+n = 200        | Predicted (0)  | Predicted (1)  
+--------------|-----|----
+**Actual (0)**| 66| 43
+**Actual (1)**| 41 | 50
+
+
+```{r}
+Accuracy = (table(Threshold_rf, TestDataDF$classlabel)[1,1] +
+              table(Threshold_rf, TestDataDF$classlabel)[2,2])/dim(TestDataDF)[1]
+cat("Accuracy is: ", Accuracy*100,"%")  
+```
+The accuracy of the model using Random Forest algorithm comes out to be **58%**. This value of accuracy is also quite low. 
+
+
+
+```{r}
+
+#importance(rf50)
+varImpPlot(rf50,  main="", cex=0.8)
+```
+
+The importance plots of all the features are plotted. Variable importance plots are mainly used to rank the usefulness of the variables.  
+
+Mean Decrease in Accuracy is the number or proportion of observations that are incorrectly classified by removing the feature from the model.  
+
+GINI importance measure is the average gain of purity by splits of a given variable.  
+
+The plots show that **PC7** variable is the most important variable. This is supported by the fact that the decision tree also selected **PC7** variable as the root node.
+
+
+### Discriminant Analysis
+Since the performance of the tree based models is not very good, lets take a look at Discriminant analysis. Both Linear and Quadratic approaches are considered.
+
+#### Linear Discriminant Analysis
+
+```{r}
+# Applying Linear Discriminant Analysis 
+library(MASS)
+
+ldafit <- lda(TrainDataDF$classlabel ~ ., data = TrainDataDF)
+```
+
+
+```{r}
+# Using model for prediction
+lda.pred <- predict(ldafit, data=TestDataDF)
+ldaclass <- lda.pred$class
+
+table(ldaclass[1:200], TestDataDF$classlabel)
+```
+
+The Confusion Matrix is as follows:
+
+n = 200        | Predicted (0)  | Predicted (1)  
+--------------|-----|----
+**Actual (0)**| 81| 23
+**Actual (1)**| 26 | 70
+
+```{r}
+# Calculate Accuracy
+Accuracy = (table(ldaclass[1:200], TestDataDF$classlabel)[1,1] +
+              table(ldaclass[1:200], TestDataDF$classlabel)[2,2])/dim(TestDataDF)[1]
+cat("Accuracy is: ", Accuracy*100,"%")
+
+```
+The Accuracy for the Linear Discriminant Analysis comes out to be **75.5%**.  
+
+
+#### Quadratic Discriminant Analysis
+
+Let us try to see if the accuracy can be further improved by using the Quadratic Discriminant Analysis approach.
+
+```{r}
+# Build QDA Model
+qdafit <- qda(TrainDataDF$classlabel ~ ., data = TrainDataDF)
+
+# Use model for prediction
+qda.pred <- predict(qdafit, data=TestDataDF)
+qdaclass <- qda.pred$class
+
+# Build Confusion Matrix
+table(qdaclass[1:200], TestDataDF$classlabel)
+```
+The Confusion Matrix is as follows:
+
+n = 200        | Predicted (0)  | Predicted (1)  
+--------------|-----|----
+**Actual (0)**| 83| 23
+**Actual (1)**| 24 | 70
+
+
+
+
+
+```{r}
+Accuracy = (table(qdaclass[1:200], TestDataDF$classlabel)[1,1] +
+              table(qdaclass[1:200], TestDataDF$classlabel)[2,2])/dim(TestDataDF)[1]
+cat("Accuracy is: ", Accuracy*100,"%") 
+
+```
+
+The Accuracy for the Quadratic Discriminant Analysis comes out to be **76.5%**. This is a very small improvement on the LDA accuracy value.
+
+
+### Conclusions
+
+I have looked at a number of classification algorithms. The performances of these models vis a vis accuracy metric derived from the confusion matrix is tabulated as follows:
+
+Model        | Accuracy(%)  
+--------------|-----|----
+**Logistic Regression**| 77
+**Decision Tree**| 56
+**Decision Tree(Pruned)**| 62
+**Random Forest**| 58
+**Linear Discriminant Analysis**| 75.5
+**Quadratic Discriminant Analysis**| 76.5
+
+
+Based on these results, it can be said that the *Logistic Regression* and *Discriminant Analysis* models seem to give better results.
+
+### Remarks
+
+The accuracy of the models can be further improved by taking the following steps:
+
+* **K-Fold Cross Validation:** The training data contains a lot of observations and therefore, a 5 fold cross validation technique can be applied to create 5 different sets of training and testing data. Each of them can be used to build models and then their average accuracies calculated.  
+
+* **Further Data Cleaning:** Treatment of missing values can be done using the MICE Package instead of using the kNN Imputation technique. Similarly, outliers can be rejected prior to carrying out Principal Component Analysis in order to make a more symmetric data distribution for each variable. However, most likely such treatments will produce minor improvements in accuracy compared to the adoption of K-Fold Cross Validation.  
+
+* **Feature Engineering:** Relevant features can be extracted based on the domain knowledge of the dataset. However, as mentioned before since the original dataset has no qualitative information regarding the variables this approach was not adopted.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
