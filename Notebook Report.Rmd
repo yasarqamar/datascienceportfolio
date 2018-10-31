@@ -1,10 +1,6 @@
 ---
 title: " Data Science Portfolio"
-output:
-  pdf_document: default
-  html_notebook:
-    fig_width: 8
-  html_document: default
+output: rmarkdown::github_document
 ---
 
 **Applicant:** Yasar Qamar  
