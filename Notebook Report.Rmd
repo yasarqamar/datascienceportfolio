@@ -1,5 +1,5 @@
 ---
-title: "Kreditech Data Science Assessment"
+title: " Data Science Portfolio"
 output:
   pdf_document: default
   html_notebook:
@@ -9,7 +9,6 @@ output:
 
 **Applicant:** Yasar Qamar  
 
-**Assessment Date:** 22-August-2017  
 
 
 This report details the approach taken to implement the solution along with the reasons for choosing different methods that have been applied. It also contains the code as well as the results obtained.
